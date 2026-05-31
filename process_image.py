@@ -7,6 +7,10 @@ import random
 import numpy as np
 from PIL import Image
 
+NORMALIZED_WORKING_SIZE = (1280, 720)
+FINAL_CANVAS_SIZE = (3840, 2160)
+FINAL_CANVAS_FIT_RATIO = 0.9
+
 
 @dataclass(frozen=True)
 class ProcessingConfig:
@@ -15,14 +19,31 @@ class ProcessingConfig:
     noise_stddev: float = 8.0
 
 
-def load_image_rgb(path: str | Path) -> np.ndarray:
-    image = Image.open(path).convert("RGB")
-    return np.asarray(image, dtype=np.uint8)
-
-
 def save_image_rgb(path: str | Path, image: np.ndarray) -> None:
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     Image.fromarray(image, mode="RGB").save(path, format="JPEG", quality=95)
+
+
+def place_on_black_canvas(
+    image: Image.Image,
+    canvas_size: tuple[int, int],
+    fit_ratio: float = 1.0,
+) -> Image.Image:
+    canvas_width, canvas_height = canvas_size
+    max_width = max(1, int(round(canvas_width * fit_ratio)))
+    max_height = max(1, int(round(canvas_height * fit_ratio)))
+    source_width, source_height = image.size
+
+    scale = min(max_width / source_width, max_height / source_height)
+    resized_width = max(1, int(round(source_width * scale)))
+    resized_height = max(1, int(round(source_height * scale)))
+
+    resized = image.resize((resized_width, resized_height), Image.Resampling.LANCZOS)
+    canvas = Image.new("RGB", canvas_size, color=(0, 0, 0))
+    paste_x = (canvas_width - resized_width) // 2
+    paste_y = (canvas_height - resized_height) // 2
+    canvas.paste(resized, (paste_x, paste_y))
+    return canvas
 
 
 def get_random_rect(height: int, width: int, rng: random.Random, max_tries: int = 100) -> tuple[int, int, int, int] | None:
@@ -72,7 +93,15 @@ def process_image_once(
     py_rng = random.Random(seed)
     np_rng = np.random.default_rng(seed)
 
-    working = load_image_rgb(input_path).copy()
+    with Image.open(input_path).convert("RGB") as source_image:
+        source_size = source_image.size
+        normalized_image = place_on_black_canvas(
+            source_image,
+            canvas_size=NORMALIZED_WORKING_SIZE,
+            fit_ratio=1.0,
+        )
+
+    working = np.asarray(normalized_image, dtype=np.uint8).copy()
     steps_dir = Path(steps_dir)
     steps_dir.mkdir(parents=True, exist_ok=True)
 
@@ -98,5 +127,15 @@ def process_image_once(
         save_image_rgb(step_path, working)
         step_paths.append(step_path)
 
-    save_image_rgb(final_output_path, working)
+    final_image = Image.fromarray(working, mode="RGB")
+    if source_size != FINAL_CANVAS_SIZE:
+        final_image = place_on_black_canvas(
+            final_image,
+            canvas_size=FINAL_CANVAS_SIZE,
+            fit_ratio=FINAL_CANVAS_FIT_RATIO,
+        )
+    else:
+        final_image = final_image.resize(FINAL_CANVAS_SIZE, Image.Resampling.LANCZOS)
+
+    save_image_rgb(final_output_path, np.asarray(final_image, dtype=np.uint8))
     return step_paths
