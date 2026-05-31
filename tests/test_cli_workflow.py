@@ -15,8 +15,13 @@ CLI_PATH = REPO_ROOT / "AI_MANIFESTO_transformer.py"
 
 
 class CliWorkflowTests(unittest.TestCase):
-    def _create_image(self, path: Path, color: tuple[int, int, int]) -> None:
-        Image.new("RGB", (24, 24), color=color).save(path, format="JPEG")
+    def _create_image(
+        self,
+        path: Path,
+        color: tuple[int, int, int],
+        size: tuple[int, int] = (24, 24),
+    ) -> None:
+        Image.new("RGB", size, color=color).save(path, format="JPEG")
 
     def test_generates_final_images_and_cleans_tmp_steps(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -50,8 +55,16 @@ class CliWorkflowTests(unittest.TestCase):
             self.assertEqual(summary["processed_images"], 2)
 
             final_images_dir = out_dir / "final_images"
-            self.assertTrue((final_images_dir / "a_processed.jpg").exists())
-            self.assertTrue((final_images_dir / "b_processed.jpg").exists())
+            final_a = final_images_dir / "a_processed.jpg"
+            final_b = final_images_dir / "b_processed.jpg"
+            self.assertTrue(final_a.exists())
+            self.assertTrue(final_b.exists())
+
+            for final_image in (final_a, final_b):
+                with Image.open(final_image) as image:
+                    self.assertEqual(image.size, (3840, 2160))
+                    corner = image.getpixel((0, 0))
+                    self.assertTrue(all(channel <= 10 for channel in corner))
 
             self.assertFalse(steps_root.exists())
 
