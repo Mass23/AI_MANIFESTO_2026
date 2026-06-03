@@ -11,7 +11,7 @@ pip install -r requirements.txt
 ## CLI
 
 ```bash
-python AI_MANIFESTO_transformer.py --data "images/*.jpg" --out batch_1_test
+python3 AI_MANIFESTO_transformer.py --data "images/*.jpg" --out batch_1_test
 ```
 
 ### Behavior
